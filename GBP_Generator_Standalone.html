@@ -178,17 +178,20 @@ function postSlide(biz, post, idx, pri, acc, imgRid) {
   const imgShape = imgRid
     ? `<p:pic>
         <p:nvPicPr>
-          <p:cNvPr id="${nextId()}" name="img${idx}"/>
+          <p:cNvPr id="${nextId()}" name="Picture${idx+1}"/>
           <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
           <p:nvPr/>
         </p:nvPicPr>
         <p:blipFill>
-          <a:blip r:embed="${imgRid}"/>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${imgRid}">
+            <a:extLst><a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"><a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/></a:ext></a:extLst>
+          </a:blip>
           <a:stretch><a:fillRect/></a:stretch>
         </p:blipFill>
         <p:spPr>
           <a:xfrm><a:off x="${emu(lx)}" y="${emu(0.98)}"/><a:ext cx="${emu(lw)}" cy="${emu(2.1)}"/></a:xfrm>
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:ln><a:noFill/></a:ln>
         </p:spPr>
       </p:pic>`
     : [
@@ -238,11 +241,13 @@ async function downloadPPT(biz, posts) {
   const imgFiles = [];
   for (let i = 0; i < posts.length; i++) {
     if (posts[i].imageBase64) {
-      const rid = `rId10${i}`;
-      const fname = `image${i+1}.jpeg`;
+      const rid = `rId${200 + i}`;
+      const ext = posts[i].imageExt || "jpeg";
+      const fname = `image${i+1}.${ext}`;
       imgRids.push(rid);
-      imgFiles.push({ rid, fname, b64: posts[i].imageBase64, slideIdx: i });
-      zip.file(`ppt/media/${fname}`, posts[i].imageBase64, { base64: true });
+      imgFiles.push({ rid, fname, ext, slideIdx: i });
+      const b64clean = posts[i].imageBase64.replace(/\s/g, "");
+      zip.file(`ppt/media/${fname}`, b64clean, { base64: true });
     } else {
       imgRids.push(null);
     }
@@ -264,6 +269,7 @@ async function downloadPPT(biz, posts) {
   <Default Extension="xml" ContentType="application/xml"/>
   <Default Extension="jpeg" ContentType="image/jpeg"/>
   <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Default Extension="png" ContentType="image/png"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
   <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
   <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
@@ -694,13 +700,15 @@ THEME_LABEL: Write a 4-6 word label summarising this post's theme.`;
           const seed = i * 1000 + Math.floor(Math.random() * 999);
           const imgResp = await fetch(`/image?prompt=${encodeURIComponent(imgPromptClean)}&seed=${seed}`);
           if (imgResp.ok) {
+            const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+            post.imageExt = contentType.includes("png") ? "png" : "jpeg";
             const blob = await imgResp.blob();
             post.imageBase64 = await new Promise(res => {
               const reader = new FileReader();
               reader.onload = () => res(reader.result.split(",")[1]);
               reader.readAsDataURL(blob);
             });
-            console.log(`Post ${i+1} image OK: ${post.imageBase64.length} chars`);
+            console.log(`Post ${i+1} image OK: ${post.imageBase64.length} chars, type: ${contentType}`);
           } else {
             console.warn(`Post ${i+1} image proxy returned ${imgResp.status}`);
           }
