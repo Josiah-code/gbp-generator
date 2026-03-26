@@ -1,173 +1,884 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GBP Content Calendar Generator</title>
-
-<!-- React -->
+<!-- React + Babel for JSX in browser -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-
-<!-- Stable PPTX library -->
-<script src="https://unpkg.com/pptxgenjs/dist/pptxgen.bundle.js"></script>
-
+<!-- JSZip for PPTX generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-body{background:#0c1610;font-family:Georgia,serif;color:#e8f0e8;margin:0}
-.container{max-width:900px;margin:auto;padding:40px}
-.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);padding:25px;border-radius:14px}
-input,textarea,select{width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:white;margin-bottom:14px;font-family:Georgia,serif}
-button{padding:12px 20px;border:none;border-radius:8px;background:#2d6a4f;color:white;font-weight:bold;cursor:pointer}
-.post{background:rgba(255,255,255,.04);padding:15px;border-radius:10px;margin-top:10px}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c1610; font-family: Georgia, serif; color: #e8f0e8; }
+  select option { background: #121f12; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+  ::-webkit-scrollbar-thumb { background: #2d6a4f; border-radius: 3px; }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 </style>
 </head>
-
 <body>
 <div id="root"></div>
 
 <script type="text/babel">
+const { useState, useEffect } = React;
 
-const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"]
+// ── Constants ──────────────────────────────────────────────────
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const CURRENT_YEAR = 2026;
 
-function generatePosts(biz,month,year){
+const POST_THEMES = [
+  "Brand introduction / what we do & why we're different",
+  "Highlight a specific product or service with benefits",
+  "Customer-focused tip or educational value post",
+  "Behind-the-scenes / team or process insight",
+  "Community story, testimonial angle, or social proof",
+  "Seasonal / timely offer or awareness moment",
+  "FAQ or myth-busting post about the industry",
+  "Call-to-action / visit us / contact / end-of-month engagement",
+];
 
-const themes=[
-"Brand introduction",
-"Product or service highlight",
-"Customer tip",
-"Behind the scenes",
-"Customer testimonial",
-"Seasonal promotion",
-"Industry myth busting",
-"Visit or contact CTA"
-]
+const BIZ_COLORS = [
+  { primary:"2d6a4f", accent:"52b788", r:45,  g:106, b:79,  ar:82,  ag:183, ab:136, label:"Forest" },
+  { primary:"1d3557", accent:"457b9d", r:29,  g:53,  b:87,  ar:69,  ag:123, ab:157, label:"Ocean"  },
+  { primary:"6a1942", accent:"c9184a", r:106, g:25,  b:66,  ar:201, ag:24,  ab:74,  label:"Berry"  },
+  { primary:"7b3f00", accent:"f4a261", r:123, g:63,  b:0,   ar:244, ag:162, ab:97,  label:"Amber"  },
+  { primary:"3a0ca3", accent:"7209b7", r:58,  g:12,  b:163, ar:114, ag:9,   ab:183, label:"Violet" },
+  { primary:"1b4332", accent:"40916c", r:27,  g:67,  b:50,  ar:64,  ag:145, ab:108, label:"Sage"   },
+  { primary:"495057", accent:"adb5bd", r:73,  g:80,  b:87,  ar:173, ag:181, ab:189, label:"Slate"  },
+  { primary:"7c3aed", accent:"a78bfa", r:124, g:58,  b:237, ar:167, ag:139, ab:250, label:"Purple" },
+];
 
-let posts=[]
+// ── Helpers ────────────────────────────────────────────────────
+function getPostDates(month, year) {
+  const dates = [];
+  const d = new Date(year, month, 1);
+  while (d.getMonth() === month && dates.length < 8) {
+    if ([1,5].includes(d.getDay())) dates.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  const d2 = new Date(year, month, 1);
+  while (dates.length < 8) {
+    const day = d2.getDay();
+    if (day >= 1 && day <= 5 && !dates.find(x => x.toDateString() === d2.toDateString())) dates.push(new Date(d2));
+    d2.setDate(d2.getDate() + 1);
+  }
+  return dates.sort((a,b)=>a-b).slice(0,8);
+}
+function fmt(d) { return d.toLocaleDateString("en-US",{month:"short",day:"numeric"}); }
+function uid() { return Math.random().toString(36).slice(2,9); }
 
-for(let i=0;i<8;i++){
-posts.push({
-week:`Week ${Math.floor(i/2)+1}`,
-date:`${MONTHS[month]} ${(i*3)+2}`,
-theme:themes[i],
-caption:`${biz.name} — ${themes[i]}. Discover what makes us different. Contact us today to learn more about our services and how we help customers every day.` ,
-ai:`photorealistic image representing ${themes[i]} for ${biz.name}`
-})
+// ── PPTX Builder (pure XML + JSZip) ───────────────────────────
+const IN = 914400;
+const SW = Math.round(13.33 * IN);
+const SH = Math.round(7.5  * IN);
+
+function emu(inches) { return Math.round(inches * IN); }
+
+function xe(str) {
+  return String(str || "")
+    // Normalize literal \n strings to actual newlines
+    .replace(/\\n/g, "\n")
+    // Remove ALL non-printable and non-ASCII characters including surrogates
+    .replace(/[\uD800-\uDFFF]/g, "")   // lone surrogates
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "") // keep only safe ASCII + tab/LF/CR
+    // XML escape (must be after stripping)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&apos;")
+    // Strip any remaining control characters XML won't accept
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 
-return posts
+let _shapeId = 100;
+function nextId() { return ++_shapeId; }
+
+function rectShape(x, y, w, h, fillHex, borderHex, borderPt) {
+  const fill = `<a:solidFill><a:srgbClr val="${fillHex}"/></a:solidFill>`;
+  const ln = borderHex
+    ? `<a:ln w="${Math.round((borderPt||1)*12700)}"><a:solidFill><a:srgbClr val="${borderHex}"/></a:solidFill></a:ln>`
+    : `<a:ln><a:noFill/></a:ln>`;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${nextId()}" name="r${nextId()}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${emu(x)}" y="${emu(y)}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill}${ln}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
 }
 
-async function downloadPPT(biz,posts,month,year){
-
-const pptx=new PptxGenJS()
-
-pptx.layout="LAYOUT_WIDE"
-
-let cover=pptx.addSlide()
-
-cover.background={color:"2d6a4f"}
-
-cover.addText(biz.name,{x:1,y:1,fontSize:36,bold:true,color:"FFFFFF"})
-cover.addText(`${MONTHS[month]} ${year} Google Business Profile Content Calendar`,{x:1,y:2,fontSize:16,color:"FFFFFF"})
-
-let summary=pptx.addSlide()
-
-summary.addText("Content Overview",{x:0.5,y:0.4,fontSize:24,bold:true})
-
-posts.forEach((p,i)=>{
-summary.addText(`${i+1}. ${p.date} - ${p.theme}`,{x:0.7,y:1+(i*.4),fontSize:12})
-})
-
-posts.forEach((p,i)=>{
-
-let s=pptx.addSlide()
-
-s.addText(`${biz.name} | ${p.week}`,{x:0.5,y:0.3,fontSize:18,bold:true})
-
-s.addText(`Post ${i+1} - ${p.date}`,{x:0.5,y:0.8,fontSize:14})
-
-s.addText("Caption",{x:0.5,y:1.4,fontSize:14,bold:true})
-
-s.addText(p.caption,{x:0.5,y:1.8,w:6,fontSize:12})
-
-s.addText("AI Image Prompt",{x:7,y:1.4,fontSize:14,bold:true})
-
-s.addText(p.ai,{x:7,y:1.8,w:5,fontSize:12,italic:true})
-
-})
-
-await pptx.writeFile(`${biz.name.replace(/[^a-z0-9]/gi,"_")}_${MONTHS[month]}_${year}_GBP_Content.pptx`)
+function txtShape(x, y, w, h, text, opts) {
+  const { fontSize=12, bold=false, italic=false, color="FFFFFF", align="left", valign="t", wrap=true } = opts||{};
+  const safeText = xe(text);
+  const lines = safeText.split(/\n/);
+  const algn = align==="center"?"ctr":align==="right"?"r":"l";
+  const paras = lines.map(line =>
+    `<a:p><a:pPr algn="${algn}"/><a:r><a:rPr lang="en-US" sz="${Math.round(fontSize*100)}" ${bold?'b="1"':''} ${italic?'i="1"':''} dirty="0"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Calibri"/></a:rPr><a:t>${line||" "}</a:t></a:r></a:p>`
+  ).join("");
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${nextId()}" name="t${nextId()}"/><p:cNvSpPr txBox="1"><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${emu(x)}" y="${emu(y)}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="${wrap?"square":"none"}" anchor="${valign}" lIns="45720" rIns="45720" tIns="45720" bIns="45720"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paras}</p:txBody></p:sp>`;
 }
 
-function App(){
-
-const[name,setName]=React.useState("")
-const[details,setDetails]=React.useState("")
-const[month,setMonth]=React.useState(new Date().getMonth())
-const[year,setYear]=React.useState(new Date().getFullYear())
-const[posts,setPosts]=React.useState(null)
-
-function generate(){
-
-if(!name||!details){
-alert("Fill business name and details")
-return
+function wrapSlide(shapes, bgHex) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${bgHex||"FFFFFF"}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${SW}" cy="${SH}"/><a:chOff x="0" y="0"/><a:chExt cx="${SW}" cy="${SH}"/></a:xfrm></p:grpSpPr>
+    ${shapes}
+  </p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
 }
 
-const biz={name,details}
-
-setPosts(generatePosts(biz,month,year))
+function coverSlide(biz, pri, acc) {
+  const mo = MONTHS[biz.month];
+  const s = [
+    rectShape(0,0,13.33,7.5,pri),
+    rectShape(0,0,13.33,0.12,acc),
+    rectShape(0,7.38,13.33,0.12,acc),
+    rectShape(9.3,0,4.03,7.5,"111111"),
+    txtShape(0.5,1.1,8.5,1.5,biz.name.toUpperCase(),{fontSize:34,bold:true,color:"FFFFFF"}),
+    txtShape(0.5,2.7,8.5,0.5,`${mo} ${biz.year}  |  Google Business Profile Content Calendar`,{fontSize:13,color:acc}),
+    rectShape(0.5,3.35,3.5,0.08,acc),
+    ...[[0,"8","POSTS"],[1,"2","PER WK"],[2,"4","WEEKS"],[3,"AI","PROMPTS"]].flatMap(([i,v,l])=>[
+      rectShape(0.5+i*2.1,3.6,1.85,1.1,"111111"),
+      txtShape(0.5+i*2.1,3.62,1.85,0.55,v,{fontSize:24,bold:true,color:acc,align:"center"}),
+      txtShape(0.5+i*2.1,4.2,1.85,0.38,l,{fontSize:8,color:"FFFFFF",align:"center"}),
+    ]),
+    txtShape(0.5,6.5,8,0.5,"Each post: Caption | Image Placeholder | AI Image Prompt",{fontSize:10,color:"CCCCCC",italic:true}),
+  ];
+  return wrapSlide(s.join(""), pri);
 }
 
-if(posts){
-return(
-<div className="container">
-<div className="card">
-<h2>{name} — Generated Posts</h2>
-<button onClick={()=>downloadPPT({name,details},posts,month,year)} style={{marginBottom:20}}>Download PPTX</button>
-
-{posts.map((p,i)=>(
-<div className="post" key={i}>
-<b>{p.week} — {p.date}</b>
-<p><b>Theme:</b> {p.theme}</p>
-<p>{p.caption}</p>
-<p style={{fontStyle:"italic"}}>AI Prompt: {p.ai}</p>
-</div>
-))}
-
-<button onClick={()=>setPosts(null)}>Back</button>
-
-</div>
-</div>
-)
+function summarySlide(biz, posts, pri, acc) {
+  const mo = MONTHS[biz.month];
+  const s = [
+    rectShape(0,0,13.33,0.9,pri),
+    rectShape(0,0,13.33,0.08,acc),
+    txtShape(0.4,0.1,10,0.7,"CONTENT SCHEDULE OVERVIEW",{fontSize:18,bold:true,color:"FFFFFF"}),
+    txtShape(10,0.1,3,0.7,`${mo} ${biz.year}`,{fontSize:12,color:acc,align:"right"}),
+    rectShape(0.3,1.05,12.7,0.42,pri),
+    ...([["#",0.5],["Date",1.2],["Week",2.6],["Theme",4.0],["Preview",7.5]].map(([h,x])=>
+      txtShape(x,1.07,2,0.38,h,{fontSize:9,bold:true,color:acc})
+    )),
+    ...posts.flatMap((post,i)=>{
+      const ry = 1.47+i*0.56;
+      const preview = (post.caption||"").replace(/\n/g," ").replace(/[^\x20-\x7E]/g,"").slice(0,60)+"...";
+      return [
+        rectShape(0.3,ry,12.7,0.52,i%2===0?"EBF5EB":"FFFFFF","CCDDCC",0.5),
+        txtShape(0.5,ry+0.05,0.6,0.42,String(i+1),{fontSize:9,color:"333333"}),
+        txtShape(1.2,ry+0.05,1.3,0.42,post.date,{fontSize:9,color:"333333"}),
+        txtShape(2.6,ry+0.05,1.3,0.42,post.week,{fontSize:9,color:"333333"}),
+        txtShape(4.0,ry+0.05,3.4,0.42,post.theme||"",{fontSize:8,color:"444444"}),
+        txtShape(7.5,ry+0.05,5.2,0.42,preview,{fontSize:7.5,color:"555555"}),
+      ];
+    }),
+  ];
+  return wrapSlide(s.join(""), "F7F9F7");
 }
 
-return(
-<div className="container">
-<div className="card">
-<h2>GBP Content Calendar Generator</h2>
+function postSlide(biz, post, idx, pri, acc, imgRid) {
+  const mo = MONTHS[biz.month];
+  const lx=0.25, lw=5.9, rx=6.45, rw=6.65;
+  // Aggressively clean all text before passing to XML
+  const cleanText = (s) => String(s||"")
+    .replace(/\\n/g,"\n")
+    .replace(/[\uD800-\uDFFF]/g,"")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g,"")
+    .trim();
+  const caption  = cleanText(post.caption);
+  const aiPrompt = cleanText(post.aiImagePrompt);
+  const imgDesc  = cleanText(post.imageDescription).slice(0,120);
 
-<input placeholder="Business name" value={name} onChange={e=>setName(e.target.value)} />
+  // If we have a real image, render it as a picture shape; otherwise show placeholder box
+  const imgShape = imgRid
+    ? `<p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="${nextId()}" name="Picture${idx+1}"/>
+          <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${imgRid}">
+            <a:extLst><a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"><a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/></a:ext></a:extLst>
+          </a:blip>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm><a:off x="${emu(lx)}" y="${emu(0.98)}"/><a:ext cx="${emu(lw)}" cy="${emu(2.1)}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:ln><a:noFill/></a:ln>
+        </p:spPr>
+      </p:pic>`
+    : [
+        rectShape(lx,0.98,lw,2.1,"EBF5EB",acc,1),
+        txtShape(lx,1.3,lw,0.5,"IMAGE PLACEHOLDER",{fontSize:12,bold:true,color:pri,align:"center"}),
+        txtShape(lx,1.82,lw,0.28,"Canva: 1200 x 900 px",{fontSize:8.5,color:"666666",align:"center"}),
+        txtShape(lx+0.1,2.1,lw-0.2,0.35,"AI image generated — view in app or use prompt below",{fontSize:7.5,color:"888888",align:"center",italic:true}),
+        txtShape(lx+0.1,2.45,lw-0.2,0.4,imgDesc,{fontSize:7,color:"999999",align:"center",italic:true}),
+      ].join("");
 
-<textarea rows="4" placeholder="Business details" value={details} onChange={e=>setDetails(e.target.value)} />
-
-<select value={month} onChange={e=>setMonth(parseInt(e.target.value))}>
-{MONTHS.map((m,i)=>(<option value={i} key={i}>{m}</option>))}
-</select>
-
-<input type="number" value={year} onChange={e=>setYear(e.target.value)} />
-
-<button onClick={generate}>Generate Content</button>
-
-</div>
-</div>
-)
+  const s = [
+    rectShape(0,0,13.33,0.82,pri),
+    rectShape(0,0,13.33,0.07,acc),
+    rectShape(0,7.43,13.33,0.07,acc),
+    txtShape(0.3,0.05,7.5,0.4,biz.name.toUpperCase(),{fontSize:12,bold:true,color:"FFFFFF"}),
+    txtShape(0.3,0.45,5,0.3,`${mo} ${biz.year}  |  ${post.week}`,{fontSize:8.5,color:acc}),
+    rectShape(10.0,0.14,3.1,0.55,acc),
+    txtShape(10.0,0.14,3.1,0.55,`POST ${idx+1} / 8  |  ${post.date}`,{fontSize:9,bold:true,color:pri,align:"center"}),
+    imgShape,
+    rectShape(lx,3.22,lw,0.34,"E8813A"),
+    txtShape(lx+0.1,3.22,lw-0.2,0.34,"AI IMAGE PROMPT",{fontSize:9,bold:true,color:"FFFFFF"}),
+    rectShape(lx,3.56,lw,2.1,"FFFAF0","F4C88A",0.8),
+    txtShape(lx+0.12,3.62,lw-0.24,1.9,aiPrompt,{fontSize:7.5,color:"6B4A1E",italic:true,valign:"t"}),
+    txtShape(lx+0.1,5.62,lw-0.2,0.25,"Midjourney | DALL-E 3 | Adobe Firefly | Canva AI",{fontSize:7,color:"B07A40"}),
+    rectShape(rx,0.98,rw,0.34,pri),
+    txtShape(rx+0.1,0.98,rw-0.2,0.34,"POST CAPTION",{fontSize:9,bold:true,color:"FFFFFF"}),
+    rectShape(rx,1.32,rw,4.9,"FFFFFF","CCDDCC",0.8),
+    txtShape(rx+0.14,1.4,rw-0.28,4.72,caption,{fontSize:8.5,color:"1A2E1A",valign:"t"}),
+    rectShape(rx,6.3,rw,0.32,"EBF5EB",acc,0.8),
+    txtShape(rx+0.1,6.3,rw-0.2,0.32,`THEME: ${(post.theme||"").replace(/[^\x20-\x7E]/g,"")}`,{fontSize:8,color:pri,bold:true}),
+    txtShape(0.3,7.22,12.7,0.2,`${biz.name}  |  ${mo} ${biz.year}  |  GBP Content Calendar  |  Page ${idx+2}`,{fontSize:7,color:"AAAAAA"}),
+  ];
+  return wrapSlide(s.join(""), "F7F9F7");
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>)
+async function downloadPPT(biz, posts) {
+  if (!window.JSZip) throw new Error("JSZip not loaded yet. Please wait a moment and try again.");
+  _shapeId = 100;
 
+  const c = BIZ_COLORS[biz.colorIdx ?? 0];
+  const pri = c.primary.toUpperCase();
+  const acc = c.accent.toUpperCase();
+
+  // Build slides WITHOUT embedded images — keeps PPTX clean and always openable
+  // Images are visible in the UI preview above
+  const slideXmls = [
+    coverSlide(biz, pri, acc),
+    summarySlide(biz, posts, pri, acc),
+    ...posts.map((post, i) => postSlide(biz, post, i, pri, acc, null)),
+  ];
+
+  const zip = new JSZip();
+
+  const slideTypes = slideXmls.map((_,i) =>
+    `<Override PartName="/ppt/slides/slide${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`
+  ).join("\n");
+
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.theme+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  ${slideTypes}
+</Types>`);
+
+  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`);
+
+  zip.file("docProps/core.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:creator>GBP Content Calendar Generator</dc:creator>
+  <cp:lastModifiedBy>GBP Content Calendar Generator</cp:lastModifiedBy>
+</cp:coreProperties>`);
+
+  zip.file("docProps/app.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+  <Application>GBP Content Calendar</Application>
+  <Slides>${slideXmls.length}</Slides>
+</Properties>`);
+
+  const sldIds = slideXmls.map((_,i) => `<p:sldId id="${256+i}" r:id="rId${i+3}"/>`).join("\n");
+  zip.file("ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>${sldIds}</p:sldIdLst>
+  <p:sldSz cx="${SW}" cy="${SH}" type="custom"/>
+  <p:notesSz cx="${emu(7.5)}" cy="${emu(10)}"/>
+</p:presentation>`);
+
+  const sldRels = slideXmls.map((_,i) =>
+    `<Relationship Id="rId${i+3}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i+1}.xml"/>`
+  ).join("\n");
+  zip.file("ppt/_rels/presentation.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
+  ${sldRels}
+</Relationships>`);
+
+  zip.file("ppt/slideMasters/slideMaster1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+  <p:txStyles>
+    <p:titleStyle><a:lvl1pPr><a:defRPr lang="en-US" b="1"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr></p:titleStyle>
+    <p:bodyStyle><a:lvl1pPr><a:defRPr lang="en-US"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr></p:bodyStyle>
+    <p:otherStyle><a:lvl1pPr><a:defRPr lang="en-US"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr></p:otherStyle>
+  </p:txStyles>
+</p:sldMaster>`);
+
+  zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`);
+
+  zip.file("ppt/slideLayouts/slideLayout1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" type="blank">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`);
+
+  zip.file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`);
+
+  zip.file("ppt/theme/theme1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="GBP">
+  <a:themeElements>
+    <a:clrScheme name="GBP"><a:dk1><a:srgbClr val="000000"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="${pri}"/></a:dk2><a:lt2><a:srgbClr val="EEEEEE"/></a:lt2><a:accent1><a:srgbClr val="${acc}"/></a:accent1><a:accent2><a:srgbClr val="${acc}"/></a:accent2><a:accent3><a:srgbClr val="${acc}"/></a:accent3><a:accent4><a:srgbClr val="${acc}"/></a:accent4><a:accent5><a:srgbClr val="${acc}"/></a:accent5><a:accent6><a:srgbClr val="${acc}"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme>
+    <a:fontScheme name="GBP"><a:majorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>
+    <a:fmtScheme name="GBP"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+  </a:themeElements>
+</a:theme>`);
+
+  slideXmls.forEach((xml, i) => {
+    zip.file(`ppt/slides/slide${i+1}.xml`, xml);
+    zip.file(`ppt/slides/_rels/slide${i+1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`);
+  });
+
+  const fileName = `GBP_${biz.name.replace(/[^a-z0-9]/gi,"_")}_${MONTHS[biz.month]}${biz.year}.pptx`;
+  const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ── Styles ─────────────────────────────────────────────────────
+const S = {
+  card: { background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", borderRadius:16, padding:"24px" },
+  label: { display:"block", fontSize:11, letterSpacing:2, textTransform:"uppercase", marginBottom:8, color:"#52b788" },
+  input: { width:"100%", padding:"13px 15px", borderRadius:10, fontSize:14, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.14)", color:"#fff", outline:"none", boxSizing:"border-box", fontFamily:"Georgia,serif" },
+  textarea: { width:"100%", padding:"13px 15px", borderRadius:10, fontSize:13, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.14)", color:"#fff", outline:"none", boxSizing:"border-box", resize:"vertical", lineHeight:1.65, fontFamily:"Georgia,serif" },
+  btnPrimary: { padding:"12px 24px", borderRadius:10, fontSize:14, fontWeight:"bold", background:"linear-gradient(135deg,#2d6a4f,#52b788)", border:"none", color:"#fff", cursor:"pointer", fontFamily:"Georgia,serif" },
+  btnGhost: { padding:"10px 20px", borderRadius:10, fontSize:13, background:"transparent", border:"1px solid rgba(255,255,255,0.18)", color:"#a8d5b5", cursor:"pointer", fontFamily:"Georgia,serif" },
+  btnDanger: { padding:"8px 14px", borderRadius:8, fontSize:12, background:"rgba(220,50,50,0.1)", border:"1px solid rgba(220,50,50,0.25)", color:"#ff8888", cursor:"pointer", fontFamily:"Georgia,serif" },
+  btnPPT: { padding:"11px 20px", borderRadius:10, fontSize:13, fontWeight:"bold", background:"linear-gradient(135deg,#c24d00,#e8813a)", border:"none", color:"#fff", cursor:"pointer", fontFamily:"Georgia,serif", display:"inline-flex", alignItems:"center", gap:7 },
+};
+
+// ── Tones ──────────────────────────────────────────────────────
+const TONES = [
+  { id:"professional", label:"Professional",   emoji:"💼", desc:"Formal, authoritative, trust-building"      },
+  { id:"friendly",     label:"Friendly",        emoji:"😊", desc:"Warm, approachable, conversational"         },
+  { id:"excited",      label:"Excited",         emoji:"🚀", desc:"Energetic, enthusiastic, hype-driven"       },
+  { id:"humorous",     label:"Humorous",        emoji:"😄", desc:"Witty, fun, light-hearted"                  },
+  { id:"inspirational",label:"Inspirational",   emoji:"✨", desc:"Motivating, uplifting, story-driven"        },
+  { id:"urgent",       label:"Urgent",          emoji:"⚡", desc:"Time-sensitive, action-focused, FOMO"       },
+  { id:"educational",  label:"Educational",     emoji:"📚", desc:"Informative, tips-focused, value-driven"    },
+  { id:"luxury",       label:"Luxury",          emoji:"👑", desc:"Premium, exclusive, sophisticated"          },
+];
+
+// ── BizModal ───────────────────────────────────────────────────
+function BizModal({ existing, onSave, onClose }) {
+  const [name, setName] = useState(existing?.name||"");
+  const [details, setDetails] = useState(existing?.details||"");
+  const [colorIdx, setColorIdx] = useState(existing?.colorIdx??0);
+  const [tone, setTone] = useState(existing?.tone||"friendly");
+  const [err, setErr] = useState("");
+  function save() {
+    if (!name.trim()||!details.trim()) { setErr("Please fill in both fields."); return; }
+    onSave({ name:name.trim(), details:details.trim(), colorIdx, tone });
+  }
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:"#121f12", border:"1px solid rgba(82,183,136,0.25)", borderRadius:20, padding:32, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+          <h3 style={{ margin:0, fontSize:18, color:"#a8d5b5", fontWeight:"normal" }}>{existing?"✏️ Edit Business":"➕ Add New Business"}</h3>
+          <button onClick={onClose} style={{ ...S.btnGhost, padding:"5px 12px", fontSize:18 }}>×</button>
+        </div>
+        {err && <div style={{ background:"rgba(220,50,50,0.15)", border:"1px solid rgba(220,50,50,0.3)", borderRadius:8, padding:"10px 14px", marginBottom:16, color:"#ff8888", fontSize:13 }}>⚠️ {err}</div>}
+        <div style={{ marginBottom:18 }}>
+          <label style={S.label}>Business Name *</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Jasper Greenflow Farm" style={S.input}/>
+        </div>
+        <div style={{ marginBottom:20 }}>
+          <label style={S.label}>Business Details *</label>
+          <textarea value={details} onChange={e=>setDetails(e.target.value)} placeholder="Location, services, unique selling points, tone..." rows={5} style={S.textarea}/>
+          <div style={{ fontSize:11, color:"#5a8a6a", marginTop:5 }}>More detail = better content quality.</div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <label style={S.label}>Content Tone</label>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            {TONES.map(t => (
+              <button key={t.id} onClick={()=>setTone(t.id)} style={{
+                padding:"10px 12px", borderRadius:10, textAlign:"left", cursor:"pointer",
+                fontFamily:"Georgia,serif", transition:"all 0.15s",
+                background: tone===t.id ? "rgba(82,183,136,0.18)" : "rgba(255,255,255,0.04)",
+                border: tone===t.id ? "1.5px solid #52b788" : "1px solid rgba(255,255,255,0.1)",
+              }}>
+                <div style={{ fontSize:13, color: tone===t.id?"#fff":"#a8d5b5", marginBottom:2 }}>
+                  {t.emoji} {t.label}
+                </div>
+                <div style={{ fontSize:10, color:"#5a8a6a" }}>{t.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom:24 }}>
+          <label style={S.label}>Brand Colour</label>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            {BIZ_COLORS.map((c,i) => (
+              <button key={i} onClick={()=>setColorIdx(i)} title={c.label} style={{ width:36, height:36, borderRadius:"50%", border:colorIdx===i?"3px solid #fff":"3px solid transparent", background:`#${c.primary}`, cursor:"pointer", outline:colorIdx===i?`2px solid #${c.accent}`:"none", outlineOffset:2 }}/>
+            ))}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:12 }}>
+          <button onClick={save} style={{ ...S.btnPrimary, flex:1 }}>{existing?"💾 Save Changes":"✅ Add Business"}</button>
+          <button onClick={onClose} style={S.btnGhost}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PostViewer ─────────────────────────────────────────────────
+function PostViewer({ biz, posts, onBack }) {
+  const [activePost, setActivePost] = useState(0);
+  const [copiedId, setCopiedId] = useState(null);
+  const [pptLoading, setPptLoading] = useState(false);
+  const [pptError, setPptError] = useState("");
+  const c = BIZ_COLORS[biz.colorIdx??0];
+  const aRGB = `rgb(${c.ar},${c.ag},${c.ab})`;
+
+  function copy(text, id) { navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(()=>setCopiedId(null),2000); }
+
+  async function handlePPT() {
+    setPptLoading(true); setPptError("");
+    try { await downloadPPT(biz, posts); }
+    catch(e) { console.error(e); setPptError(`Failed: ${e.message}`); }
+    finally { setPptLoading(false); }
+  }
+
+  const post = posts[activePost];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background:`rgba(${c.r},${c.g},${c.b},0.35)`, border:`1px solid rgba(${c.ar},${c.ag},${c.ab},0.3)`, borderRadius:14, padding:"16px 22px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+        <div>
+          <div style={{ fontSize:17, color:"#fff", fontWeight:"bold" }}>{biz.name}</div>
+          <div style={{ fontSize:12, color:aRGB, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+            <span>{MONTHS[biz.month]} {biz.year} · 8 Posts Generated</span>
+            {biz.tone && (() => { const t = TONES.find(x=>x.id===biz.tone); return t ? <span style={{ background:"rgba(255,255,255,0.1)", borderRadius:20, padding:"2px 10px" }}>{t.emoji} {t.label}</span> : null; })()}
+          </div>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={handlePPT} disabled={pptLoading} style={{ ...S.btnPPT, opacity:pptLoading?0.75:1 }}>
+              {pptLoading ? <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span> : "📊"} {pptLoading?"Building PPTX...":"Download PPTX"}
+            </button>
+            <button onClick={onBack} style={S.btnGhost}>← Back</button>
+          </div>
+          {pptError && <div style={{ fontSize:11, color:"#ff8888" }}>{pptError}</div>}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:7, marginBottom:18, overflowX:"auto", paddingBottom:4 }}>
+        {posts.map((p,i) => (
+          <button key={i} onClick={()=>setActivePost(i)} style={{ padding:"8px 14px", borderRadius:8, fontSize:12, whiteSpace:"nowrap", cursor:"pointer", fontFamily:"Georgia,serif", background:activePost===i?`#${c.primary}`:"rgba(255,255,255,0.06)", border:activePost===i?`1px solid #${c.accent}`:"1px solid rgba(255,255,255,0.11)", color:activePost===i?"#fff":"#7ab894" }}>
+            {p.week} · {p.date}
+          </button>
+        ))}
+      </div>
+
+      {post.theme && (
+        <div style={{ marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:11, color:"#5a8a6a", textTransform:"uppercase", letterSpacing:1 }}>Theme:</span>
+          <span style={{ background:`rgba(${c.ar},${c.ag},${c.ab},0.15)`, border:`1px solid rgba(${c.ar},${c.ag},${c.ab},0.35)`, borderRadius:20, padding:"4px 14px", fontSize:12, color:aRGB, fontWeight:"bold" }}>🏷 {post.theme}</span>
+        </div>
+      )}
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div style={{ ...S.card, border:`2px dashed rgba(${c.ar},${c.ag},${c.ab},0.4)`, padding:0, overflow:"hidden" }}>
+            <div style={{ fontSize:11, color:aRGB, letterSpacing:2, textTransform:"uppercase", padding:"12px 16px 8px" }}>🖼 Generated Image</div>
+            {post.imageBase64
+              ? <img src={`data:image/jpeg;base64,${post.imageBase64}`} alt={post.theme} style={{ width:"100%", display:"block", borderRadius:"0 0 12px 12px" }}/>
+              : <div style={{ background:"rgba(255,255,255,0.04)", margin:"0 12px 12px", borderRadius:10, padding:"20px", textAlign:"center" }}>
+                  <div style={{ fontSize:36, marginBottom:8 }}>🖼</div>
+                  <div style={{ fontSize:12, color:"#7ab894", marginBottom:4 }}>Image not generated</div>
+                  <div style={{ fontSize:11, color:"#5a8a6a", fontStyle:"italic" }}>{post.imageDescription}</div>
+                </div>
+            }
+          </div>
+          <div style={{ ...S.card, border:"1px solid rgba(255,200,100,0.2)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <div style={{ fontSize:11, color:"#f4a261", letterSpacing:2, textTransform:"uppercase" }}>🤖 AI Image Prompt</div>
+              <button onClick={()=>copy(post.aiImagePrompt,`p-${post.id}`)} style={{ padding:"5px 12px", borderRadius:6, fontSize:11, cursor:"pointer", fontFamily:"Georgia,serif", background:"rgba(244,162,97,0.12)", border:"1px solid rgba(244,162,97,0.3)", color:"#f4a261" }}>
+                {copiedId===`p-${post.id}`?"✓ Copied!":"Copy"}
+              </button>
+            </div>
+            <div style={{ fontSize:13, color:"#d4b896", lineHeight:1.65, fontStyle:"italic" }}>{post.aiImagePrompt}</div>
+            <div style={{ fontSize:11, color:"#8a6a3a", marginTop:10 }}>Midjourney · DALL-E 3 · Adobe Firefly · Canva AI</div>
+          </div>
+        </div>
+        <div style={{ ...S.card, display:"flex", flexDirection:"column" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontSize:11, color:"#52b788", letterSpacing:2, textTransform:"uppercase" }}>✍️ Post Caption</div>
+            <button onClick={()=>copy(post.caption,`c-${post.id}`)} style={{ padding:"5px 12px", borderRadius:6, fontSize:11, cursor:"pointer", fontFamily:"Georgia,serif", background:"rgba(82,183,136,0.1)", border:"1px solid rgba(82,183,136,0.25)", color:"#7ab894" }}>
+              {copiedId===`c-${post.id}`?"✓ Copied!":"Copy Caption"}
+            </button>
+          </div>
+          <div style={{ flex:1, background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"15px", fontSize:13.5, color:"#d4e8d4", lineHeight:1.75, whiteSpace:"pre-wrap", overflowY:"auto", maxHeight:380 }}>{post.caption}</div>
+          <div style={{ display:"flex", gap:8, marginTop:12 }}>
+            {[["POST",`${post.id+1}/8`],["DATE",post.date],["WEEK",post.week]].map(([l,v])=>(
+              <div key={l} style={{ flex:1, background:"rgba(64,145,108,0.1)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                <div style={{ fontSize:10, color:"#5a8a6a" }}>{l}</div>
+                <div style={{ fontSize:13, color:"#52b788", fontWeight:"bold" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop:24 }}>
+        <div style={{ fontSize:11, color:"#52b788", letterSpacing:2, textTransform:"uppercase", marginBottom:12 }}>All Posts — Quick View</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:9 }}>
+          {posts.map((p,i)=>(
+            <button key={i} onClick={()=>setActivePost(i)} style={{ background:activePost===i?"rgba(64,145,108,0.18)":"rgba(255,255,255,0.04)", border:`1px solid ${activePost===i?"rgba(82,183,136,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:10, padding:"11px", textAlign:"left", cursor:"pointer", fontFamily:"Georgia,serif" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                <span style={{ fontSize:10, color:"#52b788" }}>Post {i+1}</span>
+                <span style={{ fontSize:10, color:"#5a8a6a" }}>{p.date}</span>
+              </div>
+              <div style={{ fontSize:10, color:aRGB, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.theme}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginTop:20, background:"rgba(194,77,0,0.08)", border:"1px solid rgba(232,129,58,0.25)", borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, color:"#e8813a", fontWeight:"bold", marginBottom:3 }}>📊 Download as PowerPoint</div>
+          <div style={{ fontSize:12, color:"#7a5a3a" }}>Cover + summary + one detailed slide per post. All content formatted and ready to present.</div>
+        </div>
+        <button onClick={handlePPT} disabled={pptLoading} style={{ ...S.btnPPT }}>
+          {pptLoading?"⏳ Building...":"📊 Download PPTX"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────
+function GBPApp() {
+  const [businesses, setBusinesses] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [editingBiz, setEditingBiz] = useState(null);
+  const [viewingBiz, setViewingBiz] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [generating, setGenerating] = useState(null);
+  const [genProgress, setGenProgress] = useState({});
+  const [errors, setErrors] = useState({});
+
+  function handleAddBiz(data) {
+    setBusinesses(prev=>[...prev, { id:uid(), ...data, month:selectedMonth, year:selectedYear, posts:[], status:"idle" }]);
+    setShowModal(false);
+  }
+  function handleEditBiz(data) {
+    setBusinesses(prev=>prev.map((b,i)=>i===editingBiz.idx?{...b,...data}:b));
+    setEditingBiz(null);
+  }
+  function removeBiz(id) { setBusinesses(prev=>prev.filter(b=>b.id!==id)); if(viewingBiz===id) setViewingBiz(null); }
+
+  async function generateForBiz(biz) {
+    setErrors(e=>({...e,[biz.id]:""}));
+    setGenerating(biz.id);
+    setGenProgress(p=>({...p,[biz.id]:{pct:0,msg:"Starting...",livePosts:[]}}));
+    setBusinesses(prev=>prev.map(b=>b.id===biz.id?{...b,status:"generating",posts:[]}:b));
+
+    const dates = getPostDates(biz.month, biz.year);
+    const monthName = MONTHS[biz.month];
+    const generated = [];
+    const themes = [...POST_THEMES].sort(()=>Math.random()-0.5);
+    const toneObj = TONES.find(t=>t.id===(biz.tone||"friendly")) || TONES[1];
+    const toneInstruction = `Write in a ${toneObj.label} tone — ${toneObj.desc}.`;
+
+    for (let i=0; i<8; i++) {
+      const dateStr = fmt(dates[i]);
+      const wk = `Week ${Math.floor(i/2)+1}`;
+      const theme = themes[i].split("/")[0].trim();
+
+      setGenProgress(p=>({...p,[biz.id]:{...p[biz.id],
+        pct: Math.round((i/8)*100),
+        msg: `Post ${i+1}/8 — ${theme}...`
+      }}));
+
+      const prompt = `You are a social media content writer. Write a Google Business Profile post for the business below.
+
+Business: ${biz.name}
+About: ${biz.details.slice(0,200)}
+Date: ${dateStr} ${monthName}
+Theme: ${theme}
+Tone: ${toneObj.label} — ${toneObj.desc}
+
+Write the following 4 sections. Start each section with the exact label shown:
+
+CAPTION: Write 3-4 sentences promoting ${biz.name}. Be specific about their products/services. Use a ${toneObj.label} tone. Use 2-3 emojis. End with 4 relevant hashtags.
+
+IMAGE_DESCRIPTION: Write one sentence describing what a Canva graphic for this post should look like.
+
+AI_IMAGE_PROMPT: Write 2 sentences describing a photorealistic image scene for this post. End with: photorealistic, high quality, no text.
+
+THEME_LABEL: Write a 4-6 word label summarising this post's theme.`;
+
+      try {
+        const resp = await fetch("/api/messages", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"groq",
+            max_tokens:900,
+            messages:[{role:"user", content:prompt}]
+          }),
+        });
+
+        if (resp.status === 429) {
+          setGenProgress(p=>({...p,[biz.id]:{...p[biz.id], msg:`Post ${i+1}/8 — rate limit, waiting 10s...`}}));
+          await new Promise(r => setTimeout(r, 10000));
+          i--;
+          continue;
+        }
+
+        if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+
+        const data = await resp.json();
+        const raw = (data.content?.map(b=>b.text||"").join("")||"").trim();
+
+        console.log(`Post ${i+1} raw response:`, raw.slice(0, 400));
+
+        // Parse plain text sections
+        function extractSection(text, label) {
+          const regex = new RegExp(label + ':\\s*([\\s\\S]*?)(?=\\n[A-Z_]+:|$)', 'i');
+          const match = text.match(regex);
+          return match ? match[1].trim() : "";
+        }
+
+        const caption       = extractSection(raw, "CAPTION");
+        const imgDesc       = extractSection(raw, "IMAGE_DESCRIPTION");
+        const aiPrompt      = extractSection(raw, "AI_IMAGE_PROMPT");
+        const themeLabel    = extractSection(raw, "THEME_LABEL");
+
+        console.log(`Post ${i+1} caption:`, caption.slice(0,100));
+
+        const parsed = {
+          theme:            themeLabel  || theme,
+          caption:          caption     || raw.slice(0, 500),
+          imageDescription: imgDesc     || "Professional business photo.",
+          aiImagePrompt:    aiPrompt    || `${biz.name} scene, photorealistic, high quality, no text.`
+        };
+
+        const post = {
+          id: i, date: dateStr, week: wk,
+          theme: parsed.theme || theme,
+          caption: (parsed.caption || "").replace(/\\n/g,"\n"),
+          imageDescription: parsed.imageDescription || "",
+          aiImagePrompt: parsed.aiImagePrompt || "",
+          imageBase64: null  // will be filled below
+        };
+
+        // Generate image via local proxy -> Pollinations.ai (free, no key)
+        try {
+          setGenProgress(p=>({...p,[biz.id]:{...p[biz.id], msg:`Post ${i+1}/8 — generating image...`}}));
+          const imgPromptClean = (post.aiImagePrompt || `${biz.name} ${theme} professional photo`)
+            .replace(/[^\x20-\x7E]/g, "").slice(0, 200);
+          const seed = i * 1000 + Math.floor(Math.random() * 999);
+          const imgResp = await fetch(`/image?prompt=${encodeURIComponent(imgPromptClean)}&seed=${seed}`);
+          if (imgResp.ok) {
+            const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+            post.imageExt = contentType.includes("png") ? "png" : "jpeg";
+            const blob = await imgResp.blob();
+            post.imageBase64 = await new Promise(res => {
+              const reader = new FileReader();
+              reader.onload = () => res(reader.result.split(",")[1]);
+              reader.readAsDataURL(blob);
+            });
+            console.log(`Post ${i+1} image OK: ${post.imageBase64.length} chars, type: ${contentType}`);
+          } else {
+            console.warn(`Post ${i+1} image proxy returned ${imgResp.status}`);
+          }
+        } catch(imgErr) {
+          console.warn(`Post ${i+1} image failed:`, imgErr.message);
+        }
+
+        generated.push(post);
+        setGenProgress(p=>({...p,[biz.id]:{...p[biz.id],
+          pct: Math.round(((i+1)/8)*100),
+          livePosts:[...generated]
+        }}));
+
+        // Small delay to stay within rate limits (6000 tokens/min free tier)
+        if (i < 7) await new Promise(r => setTimeout(r, 500));
+
+      } catch(err) {
+        setErrors(e=>({...e,[biz.id]:`Post ${i+1} failed: ${err.message}`}));
+        setBusinesses(prev=>prev.map(b=>b.id===biz.id?{...b,status:"error"}:b));
+        setGenerating(null); return;
+      }
+    }
+
+    setGenProgress(p=>({...p,[biz.id]:{pct:100,msg:"All 8 posts done!",livePosts:generated}}));
+    setBusinesses(prev=>prev.map(b=>b.id===biz.id?{...b,posts:generated,status:"done"}:b));
+    setGenerating(null);
+  }
+
+  async function generateAll() {
+    for (const biz of businesses.filter(b=>b.status==="idle"||b.status==="error")) await generateForBiz(biz);
+  }
+
+  const viewBiz = businesses.find(b=>b.id===viewingBiz);
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0c1610,#111d11,#0c1610)", fontFamily:"Georgia,serif", color:"#e8f0e8" }}>
+      <div style={{ maxWidth:1040, margin:"0 auto", padding:"28px 18px" }}>
+
+        <div style={{ textAlign:"center", marginBottom:viewingBiz?24:36 }}>
+          <div style={{ display:"inline-flex", alignItems:"center", background:"rgba(64,145,108,0.13)", border:"1px solid rgba(64,145,108,0.28)", borderRadius:40, padding:"5px 16px", marginBottom:14, fontSize:11, color:"#52b788", letterSpacing:2, textTransform:"uppercase" }}>✦ AI-Powered Content Tool ✦</div>
+          <h1 style={{ fontSize:"clamp(24px,4vw,46px)", fontWeight:"normal", margin:"0 0 8px", color:"#52b788" }}>GBP Content Calendar</h1>
+          {!viewingBiz && <p style={{ color:"#7ab894", fontSize:15, margin:0, fontStyle:"italic" }}>Add clients · Generate 8 unique posts · Download as PowerPoint</p>}
+        </div>
+
+        {viewingBiz && viewBiz?.posts.length>0 && (
+          <PostViewer biz={viewBiz} posts={viewBiz.posts} onBack={()=>setViewingBiz(null)}/>
+        )}
+
+        {!viewingBiz && (<>
+          <div style={{ ...S.card, marginBottom:24, display:"flex", alignItems:"center", flexWrap:"wrap", gap:16 }}>
+            <div style={{ display:"flex", gap:12, flex:1, flexWrap:"wrap" }}>
+              <div style={{ minWidth:160 }}>
+                <label style={S.label}>Default Month</label>
+                <select value={selectedMonth} onChange={e=>setSelectedMonth(Number(e.target.value))} style={{ ...S.input, padding:"10px 12px" }}>
+                  {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
+                </select>
+              </div>
+              <div style={{ minWidth:100 }}>
+                <label style={S.label}>Year</label>
+                <select value={selectedYear} onChange={e=>setSelectedYear(Number(e.target.value))} style={{ ...S.input, padding:"10px 12px" }}>
+                  {[2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:18 }}>
+              {businesses.some(b=>b.status==="idle"||b.status==="error") && (
+                <button onClick={generateAll} disabled={!!generating} style={{ ...S.btnPrimary, opacity:generating?0.6:1, background:"linear-gradient(135deg,#1d3557,#457b9d)" }}>⚡ Generate All</button>
+              )}
+              <button onClick={()=>setShowModal(true)} style={S.btnPrimary}>➕ Add Business</button>
+            </div>
+          </div>
+
+          {businesses.length===0 && (
+            <div style={{ ...S.card, textAlign:"center", padding:"60px 32px" }}>
+              <div style={{ fontSize:52, marginBottom:16 }}>🏢</div>
+              <h2 style={{ fontSize:20, color:"#a8d5b5", fontWeight:"normal", marginBottom:8 }}>No businesses yet</h2>
+              <p style={{ color:"#5a8a6a", marginBottom:24 }}>Click <strong style={{ color:"#52b788" }}>Add Business</strong> to get started.</p>
+              <button onClick={()=>setShowModal(true)} style={S.btnPrimary}>➕ Add Your First Business</button>
+            </div>
+          )}
+
+          {businesses.length>0 && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:16 }}>
+              {businesses.map((biz,idx)=>{
+                const c = BIZ_COLORS[biz.colorIdx??0];
+                const prog = genProgress[biz.id];
+                const isGen = generating===biz.id;
+                const err = errors[biz.id];
+                return (
+                  <div key={biz.id} style={{ background:`rgba(${c.r},${c.g},${c.b},0.18)`, border:`1px solid rgba(${c.ar},${c.ag},${c.ab},0.28)`, borderRadius:16, padding:"20px", display:"flex", flexDirection:"column", gap:14 }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                      <div style={{ width:44, height:44, borderRadius:"50%", flexShrink:0, background:`#${c.primary}`, border:`2px solid #${c.accent}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🏢</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:15, color:"#fff", fontWeight:"bold", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{biz.name}</div>
+                        <div style={{ fontSize:11, color:`#${c.accent}`, marginTop:2, display:"flex", gap:8, alignItems:"center" }}>
+                          <span>{MONTHS[biz.month]} {biz.year}</span>
+                          {biz.tone && <span style={{ background:"rgba(255,255,255,0.08)", borderRadius:20, padding:"1px 8px" }}>
+                            {TONES.find(t=>t.id===biz.tone)?.emoji} {biz.tone}
+                          </span>}
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <button onClick={()=>setEditingBiz({biz,idx})} style={{ ...S.btnGhost, padding:"5px 10px", fontSize:12 }}>✏️</button>
+                        <button onClick={()=>removeBiz(biz.id)} style={{ ...S.btnDanger, padding:"5px 10px", fontSize:12 }}>🗑</button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize:12, color:"#7ab894", lineHeight:1.5, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical" }}>{biz.details}</div>
+                    {err && <div style={{ fontSize:12, color:"#ff8888", background:"rgba(220,50,50,0.1)", borderRadius:8, padding:"8px 10px" }}>⚠️ {err}</div>}
+                    {isGen && prog && (
+                      <div>
+                        <div style={{ fontSize:11, color:`#${c.accent}`, marginBottom:6 }}>{prog.msg}</div>
+                        <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:999, height:6, overflow:"hidden" }}>
+                          <div style={{ height:"100%", borderRadius:999, background:`#${c.accent}`, width:`${prog.pct}%`, transition:"width 0.4s" }}/>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:"auto", flexWrap:"wrap", gap:8 }}>
+                      <div style={{ fontSize:11, fontWeight:"bold", color:biz.status==="done"?"#52b788":biz.status==="generating"?"#f4a261":biz.status==="error"?"#ff8888":"#7ab894" }}>
+                        {biz.status==="done"?"✓ 8 Posts Ready":biz.status==="generating"?"⏳ Generating...":biz.status==="error"?"✗ Error":"○ Not Generated"}
+                      </div>
+                      <div style={{ display:"flex", gap:7 }}>
+                        {biz.status==="done" && <>
+                          <button onClick={async()=>{try{await downloadPPT(biz,biz.posts);}catch(e){alert(e.message);}}} style={{ ...S.btnPPT, padding:"8px 13px", fontSize:11 }}>📊 PPTX</button>
+                          <button onClick={()=>setViewingBiz(biz.id)} style={{ ...S.btnPrimary, padding:"8px 14px", fontSize:12, background:`linear-gradient(135deg,#${c.primary},#${c.accent})` }}>View →</button>
+                        </>}
+                        {(biz.status==="idle"||biz.status==="error") && (
+                          <button onClick={()=>generateForBiz(biz)} disabled={!!generating} style={{ ...S.btnPrimary, padding:"8px 14px", fontSize:12, background:`linear-gradient(135deg,#${c.primary},#${c.accent})`, opacity:generating?0.5:1 }}>✨ Generate</button>
+                        )}
+                        {biz.status==="done" && (
+                          <button onClick={()=>generateForBiz(biz)} disabled={!!generating} style={{ ...S.btnGhost, padding:"8px 12px", fontSize:11, opacity:generating?0.5:1 }} title="Regenerate">↻</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <button onClick={()=>setShowModal(true)} style={{ background:"rgba(255,255,255,0.02)", border:"2px dashed rgba(82,183,136,0.2)", borderRadius:16, padding:"20px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10, cursor:"pointer", minHeight:200, fontFamily:"Georgia,serif" }}>
+                <div style={{ fontSize:32, color:"#2d6a4f" }}>＋</div>
+                <div style={{ fontSize:13, color:"#5a8a6a" }}>Add Another Business</div>
+              </button>
+            </div>
+          )}
+        </>)}
+
+        <div style={{ textAlign:"center", marginTop:40, fontSize:11, color:"#2d5a2d" }}>GBP Content Calendar Generator · AI-Powered · PPTX Export</div>
+      </div>
+
+      {showModal && <BizModal onSave={handleAddBiz} onClose={()=>setShowModal(false)}/>}
+      {editingBiz && <BizModal existing={editingBiz.biz} onSave={handleEditBiz} onClose={()=>setEditingBiz(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<GBPApp/>);
 </script>
-
 </body>
 </html>
