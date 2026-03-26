@@ -196,9 +196,10 @@ function postSlide(biz, post, idx, pri, acc, imgRid) {
       </p:pic>`
     : [
         rectShape(lx,0.98,lw,2.1,"EBF5EB",acc,1),
-        txtShape(lx,1.4,lw,0.5,"IMAGE PLACEHOLDER",{fontSize:12,bold:true,color:pri,align:"center"}),
-        txtShape(lx,1.88,lw,0.28,"Canva: 1200 x 900 px",{fontSize:8.5,color:"666666",align:"center"}),
-        txtShape(lx+0.1,2.18,lw-0.2,0.7,imgDesc,{fontSize:7.5,color:"888888",align:"center",italic:true}),
+        txtShape(lx,1.3,lw,0.5,"IMAGE PLACEHOLDER",{fontSize:12,bold:true,color:pri,align:"center"}),
+        txtShape(lx,1.82,lw,0.28,"Canva: 1200 x 900 px",{fontSize:8.5,color:"666666",align:"center"}),
+        txtShape(lx+0.1,2.1,lw-0.2,0.35,"AI image generated — view in app or use prompt below",{fontSize:7.5,color:"888888",align:"center",italic:true}),
+        txtShape(lx+0.1,2.45,lw-0.2,0.4,imgDesc,{fontSize:7,color:"999999",align:"center",italic:true}),
       ].join("");
 
   const s = [
@@ -234,30 +235,15 @@ async function downloadPPT(biz, posts) {
   const pri = c.primary.toUpperCase();
   const acc = c.accent.toUpperCase();
 
-  const zip = new JSZip();
-
-  // Add images to zip and build relationship IDs
-  const imgRids = [];
-  const imgFiles = [];
-  for (let i = 0; i < posts.length; i++) {
-    if (posts[i].imageBase64) {
-      const rid = `rId${200 + i}`;
-      const ext = posts[i].imageExt || "jpeg";
-      const fname = `image${i+1}.${ext}`;
-      imgRids.push(rid);
-      imgFiles.push({ rid, fname, ext, slideIdx: i });
-      const b64clean = posts[i].imageBase64.replace(/\s/g, "");
-      zip.file(`ppt/media/${fname}`, b64clean, { base64: true });
-    } else {
-      imgRids.push(null);
-    }
-  }
-
+  // Build slides WITHOUT embedded images — keeps PPTX clean and always openable
+  // Images are visible in the UI preview above
   const slideXmls = [
     coverSlide(biz, pri, acc),
     summarySlide(biz, posts, pri, acc),
-    ...posts.map((post, i) => postSlide(biz, post, i, pri, acc, imgRids[i])),
+    ...posts.map((post, i) => postSlide(biz, post, i, pri, acc, null)),
   ];
+
+  const zip = new JSZip();
 
   const slideTypes = slideXmls.map((_,i) =>
     `<Override PartName="/ppt/slides/slide${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`
@@ -267,9 +253,6 @@ async function downloadPPT(biz, posts) {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="jpeg" ContentType="image/jpeg"/>
-  <Default Extension="jpg" ContentType="image/jpeg"/>
-  <Default Extension="png" ContentType="image/png"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
   <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
   <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
@@ -333,16 +316,9 @@ async function downloadPPT(biz, posts) {
 
   slideXmls.forEach((xml, i) => {
     zip.file(`ppt/slides/slide${i+1}.xml`, xml);
-    // Post slides (index 2+) may have an image
-    const postIdx = i - 2;
-    const imgFile = imgFiles.find(f => f.slideIdx === postIdx);
-    const imgRel = imgFile
-      ? `<Relationship Id="${imgFile.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${imgFile.fname}"/>`
-      : "";
     zip.file(`ppt/slides/_rels/slide${i+1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-  ${imgRel}
 </Relationships>`);
   });
 
